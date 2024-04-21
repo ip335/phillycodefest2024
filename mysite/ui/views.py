@@ -1,36 +1,20 @@
 from django.shortcuts import render
 from django.contrib.auth import login, authenticate
 from django.contrib.auth.forms import UserCreationForm
-from .forms import *
-import sounddevice as sd
-import numpy as np
-import wave
-from pydub import *
-import soundfile as sf
-from openai import OpenAI
-import openai
-import spacy
-from pathlib import Path
-import time
-import pygame
-import os
 
+from .models import Audio
+from .forms import *
+from django.conf import settings
+from .ai import *
+from django.http import HttpResponseServerError, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+import tempfile
+import glob
 
 # Create your views here.
 from django.contrib.auth import authenticate, login
 from django.shortcuts import render, redirect
-
-def login_view(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        user = authenticate(request, username=username, password=password)
-        if user is not None:
-            login(request, user)
-            return redirect('/api/tests') # Redirect to a home page or wherever
-        else:
-            return render(request, 'login.html', {'error': 'Invalid username or password'})
-    return render(request, 'login.html')
 
 def register(response):
     form = RegisterForm()
@@ -44,4 +28,44 @@ def register(response):
     return render(response, "register.html", {"form": form})
 
 def home(response):
-    return render(response, "home.html", {})
+    audio_url = settings.MEDIA_URL + "speech.mp3"  # Adjust the file name as necessary
+    context = {'audio_url': audio_url}
+    return render(response, "home.html", context)
+
+@csrf_exempt
+def get_question_audio_url(response):
+    if response.method == "POST":
+        json_data = json.loads(response.body)
+        try:
+            question = json_data['question']
+        except KeyError:
+            HttpResponseServerError("Malformed data!")
+        path = textToSpeech(question)
+        return JsonResponse({'audio_url': str(path)})
+
+@csrf_exempt
+def get_answer_url(response):
+    if response.method == "POST":
+        file = response.FILES.get("audio")
+        audio = Audio(record=file)
+        # try:
+        #     os.remove("media/recording.mp3")
+        # except OSError as e: # name the Exception `e`
+        #     print ("Failed") # look what it says
+        list_of_files = glob.glob('media/*')
+        for paths in list_of_files:
+            if paths.startswith("record"):
+                os.remove(paths)
+        audio.save()
+        list_of_files = glob.glob('media/*')
+        latest_file = max(list_of_files, key=os.path.getctime)
+        print(latest_file)
+        result = speechToText(latest_file)
+        answer = tokenize(result)
+
+        return JsonResponse({"answer": answer})
+    else:
+        return JsonResponse({'status': 'error'})
+
+def test(response):
+    return render(response, "test.html", {})

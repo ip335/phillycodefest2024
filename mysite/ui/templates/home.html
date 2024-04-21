@@ -1,8 +1,350 @@
 {% extends 'base.html' %}
 {% load crispy_forms_tags %}
+{% load static %}
+
+{% block js %}
+<script src="{% static 'js/home.js' %}" type="module"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+{% endblock %}
 
 {% block content %}
 
-<h1>Welcome</h1>
+<div class="card col">
+    <div class="card-header bg-success-subtle">
+        Progress Graph
+    </div>
+    <div class="card-body">
+        <div id="tester" style="height:250px;"></div>
+    </div>  
+</div>
+
+<div id="questions" class="col d-flex justify-content-center">
+    <button class="mic-toggle" id="mic">
+        <span class="material-symbols-outlined">
+          mic
+        </span>
+    </button>
+      
+    <audio class="playback" controls></audio>
+    <audio id="questionAudio" src="media/speech.mp3" controls></audio>
+</div>
+
+
+<style>
+    .material-symbols-outlined {
+      font-variation-settings:
+      'FILL' 0,
+      'wght' 400,
+      'GRAD' 0,
+      'opsz' 24
+    }
+  
+  button {
+    appearance: none;
+    border: none;
+    outline: none;
+    background: none;
+  
+    cursor: pointer;
+    width: 10px;
+    height: 10px;
+  }
+  
+  #mic {
+    height: 5rem;
+    width: 5rem;
+  }
+  
+  .mic-toggle {
+      position: relative;
+      display:block;
+      width: 8rem;
+      height: 8rem;
+      border-radius: 50%;
+      background-color: crimson;
+      margin-bottom: 4rem;
+  }
+  
+  .mic-toggle:after,
+  .mic-toggle::before {
+      --pad: 0rem;
+      content: '';
+      display: block;
+      position: absolute;
+      z-index: 0;
+      background-color: rgba(220,20,60,0.2);
+      top: var(--pad);
+      left: var(--pad);
+      right: var(--pad);
+      bottom: var(--pad);
+      border-radius: 50%;
+  }
+  
+  .mic-toggle:after {
+      transition: 0.4s;
+  }
+  
+  .mic-toggle::before {
+      transition: 0.2s;
+  }
+  
+  .mic-toggle:hover:before {
+      --pad: -1rem;
+  }
+  
+  .mic-toggle:hover:after {
+      --pad: -1rem
+  }
+  
+  .mic-toggle:span {
+      position: relative;
+      z-index: 1;
+      color: #fff;
+      font-size: 6rem;
+  }
+  
+  .mic-toggle.is-recording:after {
+      animation: smoothPadAfter 0.6s ease-in alternate-reverse forwards infinite;
+  }
+  
+  .mic-toggle.mic-toggle.is-recording:before {
+    animation: smoothPadBefore 0.6s ease-in alternate-reverse forwards infinite;
+  }
+  @keyframes smoothPadAfter {
+    0% {
+      top: -2rem;
+      left: -2rem;
+      right: -2rem;
+      bottom: -2rem;
+    }
+    100% {
+      top: -1rem;
+      left: -1rem;
+      right: -1rem;
+      bottom: -1rem;
+    }
+  }
+  
+  @keyframes smoothPadBefore {
+    0% {
+      top: -1rem;
+      left: -1rem;
+      right: -1rem;
+      bottom:  -1rem;
+    }
+    100%{
+      top: -0.5rem;
+      left: -0.5rem;
+      right: -0.5rem;
+      bottom: -0.5rem;
+    }
+  }
+  
+  .playback {
+    margin-bottom: 1rem;
+    box-shadow: 0px 0px 1rem rgba(0,0,0,0.2);
+    border-radius: 999px;
+  }
+  
+  .is-hidden {
+    display: none;
+  }
+</style>
+  
+<script>
+const mic_btn = document.querySelector("#mic");
+  const playback = document.querySelector(".playback");
+  var index;
+  console.log("working");
+  
+  mic_btn.addEventListener("click", ToggleMic);
+  
+  let can_record = false;
+  let is_recording = false;
+  let answer_submitted = false;
+
+  let recorder = null;
+  
+  let chunks = [];
+  
+  function SetupAudio() {
+      console.log("Setup");
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({
+              audio: true
+          })
+          .then(SetupStream)
+          .catch(err => {
+              console.error(err)
+          });
+      }
+  }
+  
+  SetupAudio();
+  
+  function SetupStream(stream) {
+      recorder = new MediaRecorder(stream);
+  
+      recorder.ondataavailable = e => {
+          chunks.push(e.data);
+      }
+  
+      recorder.onstop = e => {
+          const blob = new Blob(chunks, {type: "audio/mp3"});
+          chunks = [];
+          const audioUrl = window.URL.createObjectURL(blob);
+          playback.src = audioUrl;
+          const formData = new FormData();
+          formData.append('audio', blob, "recording.mp3");
+          fetch('http://127.0.0.1:8000/get_answer_url/', {
+            method: "POST",
+            body: formData
+          })
+          .then(response => {
+            if (response.ok) {
+                return response.json(); // Parse the JSON in the response
+            }
+            throw new Error('Network response was not ok.');
+        })
+        .then(data => {
+            // 'data' is the parsed JSON object from the Django JsonResponse
+            console.log('Success:', data);
+
+            // Access fields from the JSON object
+            const answer = data.answer;
+            if (answer == questions[index].answer)
+                console.log("correct")  
+            
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+          
+      }
+  
+      can_record = true;
+  }
+  
+  function ToggleMic() {
+      if (!can_record) return;
+  
+      is_recording = !is_recording;
+  
+      if (is_recording) {
+          recorder.start();
+          mic_btn.classList.add("is-recording")
+      }
+      else {
+          recorder.stop();
+          mic_btn.classList.remove("is-recording");
+      }
+  }
+</script>
+
+
+<script> 
+    const x = [];
+    const y = [];
+    $.getJSON('http://127.0.0.1:8000/api/results/', (data) => {
+    // Populate x and y arrays with fetched data
+    for (let i = 0; i < data.length; i++) {
+        x.push(data[i].id);
+        y.push(data[i].result);
+    }
+
+    // Once data is fetched, create the plot
+    Plotly.newPlot('tester', [{
+        x: x,
+        y: y
+    }], {
+        margin: { t: 0 },
+        xaxis: {title: "Days"},
+        yaxis: {title: "Test Result"}
+    });
+});
+
+</script>
+
+<script>
+    function textToSpeechAPI(q) {
+        
+        $.ajax({
+            url: 'http://127.0.0.1:8000/get_question_audio_url/',
+            type: 'POST',
+            contentType: 'application/json',
+            async: false,
+            data: JSON.stringify({
+                question: q
+            }),
+            success: (e) => {
+
+            },
+            error: (e) => {console.log("not working");}
+        });
+    };
+
+    // const questions = ["What year is this?", "What season is this?", "What month is this?", "What is today’s date?", "What day of the week is this?"]
+    
+    for (let i = 0; i < questions.length; i++) {
+        index = i;
+        $.ajax({
+                url: 'http://127.0.0.1:8000/get_question_audio_url/',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    question: questions[i].question
+                }),
+                async: false,
+                success: (e) => {
+                    var questionSpeech = document.getElementById("questionAudio");
+                    questionSpeech.play();
+                    while (!answer_submitted) {
+
+                    }
+                    
+                }
+            });
+    }
+    
+
+</script>
+
+<script>
+
+const questions = [
+        {
+            question: "What year is this?",
+            answer: new Date().getFullYear()
+        },
+        {
+            question: "What month is it?",
+            answer: new Date().getMonth()
+        },
+        {
+            question: "What season is it?",
+            answer: "spring",
+        },{
+            question: "What day of the week is it?",
+            answer: new Date().getDay()
+        },
+
+        {
+            question: "What country are we in",
+            answer: "America"
+        },
+        {
+            question: "What state are we in?",
+            answer: "Pennsylvania",
+        },
+        {
+            question: "What city/town are we in?",
+            answer: "Philadelphia",
+        },
+        {
+            question: "Spell the word WORLD",
+            answer: "world"
+        },
+    ]
+</script>
 
 {% endblock %}
