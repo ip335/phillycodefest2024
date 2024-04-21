@@ -17,7 +17,7 @@
         <div id="tester" style="height:250px;"></div>
     </div>  
 </div>
-
+<!-- 
 <div id="questions" class="col d-flex justify-content-center">
     <button class="mic-toggle" id="mic">
         <span class="material-symbols-outlined">
@@ -27,10 +27,175 @@
       
     <audio class="playback" controls></audio>
     <audio id="questionAudio" src="media/speech.mp3" controls></audio>
+</div> -->
+
+<div id="questions" class="col d-flex justify-content-center">
+    <div class="row-cols-1">
+        <div class="col">
+            <h1>Cognitive Test Application</h1>
+        </div>
+        <div class="col">
+            <button id="askButton">Start Test</button>
+            <button id="startBtn" disabled>Start Recording</button>
+            <button id="stopBtn" disabled>Stop Recording</button>
+        </div>
+        <div class="col">
+            <p>Status: <span id="status">Idle</span></p>
+            <p>Question: <span id="questionDisplay">[None]</span></p>
+            <p>Transcription: <span id="transcription">[None]</span></p>
+            <p>Is Correct?: <span id="isCorrect">[Awaiting response]</span></p>
+        </div>
+    </div>  
 </div>
 
+<script>
+    let currentQuestionIndex = 0;
+    let currentResult = 0;
+  
+    const statusElement = document.getElementById('status');
+    const questionElement = document.getElementById('questionDisplay');
+    const transcriptionElement = document.getElementById('transcription');
+    const isCorrectElement = document.getElementById('isCorrect');
+    const askButton = document.getElementById('askButton');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+  
+    // Setup Speech Synthesis
+    function speakText(text) {
+      const synth = window.speechSynthesis;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.onend = () => {
+        console.log('Speech synthesis finished.');
+        statusElement.textContent = 'Ready to record answer.';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+      synth.speak(utterance);
+    }
+  
+    // Initialize SpeechRecognition
+    let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+  
+    recognition.onstart = function() {
+      statusElement.textContent = 'Recording started...';
+      stopBtn.disabled = false;
+      startBtn.disabled = true;
+    };
+  
+    recognition.onresult = function(event) {
+      const speechToText = event.results[0][0].transcript;
+      transcriptionElement.textContent = speechToText;
+      statusElement.textContent = 'Transcription complete';
+      checkAnswer(speechToText);
+    };
+  
+    recognition.onspeechend = function() {
+      recognition.stop();
+      statusElement.textContent = 'Stopped listening, processing...';
+    };
+  
+    recognition.onerror = function(event) {
+      statusElement.textContent = 'Error occurred in recognition: ' + event.error;
+    };
+  
+    recognition.onend = function() {
+      stopBtn.disabled = true;
+      startBtn.disabled = true;
+      setTimeout(nextQuestion, 2000); // Wait 2 seconds before next question
+    };
+  
+    function checkAnswer(userAnswer) {
+      const correctAnswer = questions[currentQuestionIndex].answer.toLowerCase();
+      if (userAnswer.trim().toLowerCase() === correctAnswer) {
+        isCorrectElement.textContent = 'Correct';
+        currentResult += 1;
+      } else {
+        isCorrectElement.textContent = 'Incorrect, expected: ' + correctAnswer;
+      }
+    }
+  
+    function nextQuestion() {
+      currentQuestionIndex++;
+      if (currentQuestionIndex < questions.length) {
+        askButton.disabled = false;
+        isCorrectElement.textContent = '[Awaiting response]';
+        transcriptionElement.textContent = '[None]';
+        statusElement.textContent = 'Ready for next question.';
+      } else {
+        questionElement.textContent = 'Test completed!';
+        askButton.disabled = true;
+      }
+    }
+  
+    askButton.onclick = () => {
+      if (currentQuestionIndex < questions.length) {
+        const question = questions[currentQuestionIndex].question;
+        questionElement.textContent = question;
+        speakText(question);
+        askButton.disabled = true;
+        startBtn.disabled = false;
+      }
+    };
+  
+    startBtn.onclick = () => recognition.start();
+    stopBtn.onclick = () => recognition.stop();
+  
+    $.ajax({
+          url: 'http://127.0.0.1:8000/api/tests/',
+          headers: {
+              'X-CSRFTOKEN': '{{ csrf_token }}'
+          },
+          type: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({
+              name: "Test_" + (new Date().getDate().toString()),
+              result: currentResult,
+          }),
+          async: false,
+          success: (e) => {
+              console.log(e);
+          }
+        });
+  
+  </script>
 
 <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      padding: 20px; 
+      background-color: #f4f4f9; 
+      color: #333; 
+    }
+    button { 
+      margin: 10px; 
+      padding: 10px; 
+      background-color: #4CAF50; 
+      color: white; 
+      border: none; 
+      cursor: pointer; 
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:disabled {
+      background-color: #ccc;
+      color: #666;
+    }
+    h1 {
+      color: #333;
+    }
+    p {
+      font-size: 16px;
+    }
+    #status {
+      font-weight: bold;
+    }
+  </style>
+
+<!-- <style>
     .material-symbols-outlined {
       font-variation-settings:
       'FILL' 0,
@@ -149,7 +314,7 @@
   .is-hidden {
     display: none;
   }
-</style>
+</style> --> 
   
 <script>
 const mic_btn = document.querySelector("#mic");
@@ -266,79 +431,35 @@ const mic_btn = document.querySelector("#mic");
 </script>
 
 <script>
-    function textToSpeechAPI(q) {
-        
-        $.ajax({
-            url: 'http://127.0.0.1:8000/get_question_audio_url/',
-            type: 'POST',
-            contentType: 'application/json',
-            async: false,
-            data: JSON.stringify({
-                question: q
-            }),
-            success: (e) => {
-
-            },
-            error: (e) => {console.log("not working");}
-        });
-    };
-
-    // const questions = ["What year is this?", "What season is this?", "What month is this?", "What is today’s date?", "What day of the week is this?"]
-    
-    for (let i = 0; i < questions.length; i++) {
-        index = i;
-        $.ajax({
-                url: 'http://127.0.0.1:8000/get_question_audio_url/',
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    question: questions[i].question
-                }),
-                async: false,
-                success: (e) => {
-                    var questionSpeech = document.getElementById("questionAudio");
-                    questionSpeech.play();
-                    while (!answer_submitted) {
-
-                    }
-                    
-                }
-            });
-    }
-    
-
-</script>
-
-<script>
 
 const questions = [
         {
             question: "What year is this?",
-            answer: new Date().getFullYear()
+            answer: 2024
         },
         {
             question: "What month is it?",
-            answer: new Date().getMonth()
+            answer: "april"
         },
         {
             question: "What season is it?",
             answer: "spring",
         },{
             question: "What day of the week is it?",
-            answer: new Date().getDay()
+            answer: "sunday"
         },
 
         {
             question: "What country are we in",
-            answer: "America"
+            answer: "america"
         },
         {
             question: "What state are we in?",
-            answer: "Pennsylvania",
+            answer: "pennsylvania",
         },
         {
             question: "What city/town are we in?",
-            answer: "Philadelphia",
+            answer: "philadelphia",
         },
         {
             question: "Spell the word WORLD",

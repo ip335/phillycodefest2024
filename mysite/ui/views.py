@@ -48,10 +48,6 @@ def get_answer_url(response):
     if response.method == "POST":
         file = response.FILES.get("audio")
         audio = Audio(record=file)
-        # try:
-        #     os.remove("media/recording.mp3")
-        # except OSError as e: # name the Exception `e`
-        #     print ("Failed") # look what it says
         list_of_files = glob.glob('media/*')
         for paths in list_of_files:
             if paths.startswith("record"):
